@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulator Otonom - Belokan Mulus & Kota Hidup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a; 
+            color: white;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        canvas { display: block; }
+
+        /* Panel Navigasi & Info Perjalanan */
+        #journey-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 23, 42, 0.85);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #3b82f6;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            width: 320px;
+            z-index: 10;
+            backdrop-filter: blur(8px);
+            display: none;
+        }
+
+        /* UI Control Panel */
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(15, 23, 42, 0.85);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #475569;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            width: 300px;
+            z-index: 10;
+            backdrop-filter: blur(8px);
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .ai-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+        .status-cruise { background-color: #3b82f6; color: white; }
+        .status-brake { background-color: #ef4444; color: white; }
+        .status-turning { background-color: #f59e0b; color: white; }
+
+        /* Modal Peta Bergaya Baru (Node Network) */
+        #map-modal {
+            position: absolute;
+            inset: 0;
+            background: #09131d; /* Warna gelap mirip image_00c35a.png */
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .map-container {
+            position: relative;
+            width: 90vw;
+            max-width: 1200px;
+            aspect-ratio: 2.2 / 1;
+            /* Latar belakang grid */
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            background-position: center;
+            border-radius: 12px;
+            border: 1px solid #1e293b;
+            box-shadow: inset 0 0 100px rgba(0,0,0,0.8);
+            overflow: hidden;
+        }
+
+        #map-svg-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .city-pin {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .city-pin:hover {
+            z-index: 20;
+        }
+
+        .pin-dot {
+            width: 12px;
+            height: 12px;
+            background-color: #64748b;
+            border: 2px solid #0f172a;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .city-pin:hover .pin-dot {
+            background-color: #ef4444;
+            box-shadow: 0 0 12px #ef4444;
+            transform: scale(1.3);
+        }
+
+        .pin-label {
+            margin-left: 8px;
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 500;
+            pointer-events: none;
+            white-space: nowrap;
+            transition: color 0.2s;
+        }
+
+        .city-pin:hover .pin-label {
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        .region-label {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.15);
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: 4px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Layar Kedatangan */
+        #arrival-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(16, 185, 129, 0.2);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 40;
+            display: none;
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Panel Informasi Perjalanan -->
+    <div id="journey-panel">
+        <h2 class="text-lg font-bold text-blue-400 mb-2">Navigasi Peta Aktif</h2>
+        <div class="mb-3">
+            <p class="text-sm text-gray-300">Menuju:</p>
+            <p id="dest-name" class="text-2xl font-bold text-white">Jakarta</p>
+        </div>
+        <div class="mb-2">
+            <div class="flex justify-between text-sm mb-1">
+                <span>Sisa Jarak</span>
+                <span id="dist-text" class="font-bold text-blue-300">500 km</span>
+            </div>
+            <div class="w-full bg-gray-700 rounded-full h-3">
+                <div id="progress-bar" class="bg-blue-500 h-3 rounded-full" style="width: 0%"></div>
+            </div>
+        </div>
+        <div id="ai-status-indicator" class="ai-status status-cruise">AI: MENGEMUDI NORMAL</div>
+        <button onclick="openMap()" class="mt-4 w-full bg-gray-600 hover:bg-gray-500 text-white font-semibold py-2 rounded">
+            Ubah Destinasi
+        </button>
+    </div>
+
+    <!-- Panel Kontrol Kendaraan -->
+    <div id="ui-panel">
+        <h2 class="text-xl font-bold mb-4 text-blue-400 border-b border-gray-600 pb-2">Kontrol Otonom AI</h2>
+        <div class="control-group">
+            <label class="block text-sm font-medium mb-1 flex justify-between">
+                <span>Kecepatan Target:</span>
+                <span id="speed-val" class="text-blue-300">80 km/h</span>
+            </label>
+            <input type="range" id="speed-slider" min="20" max="180" value="80" class="accent-blue-500">
+        </div>
+        <p class="text-xs text-gray-400 mt-4 leading-relaxed">
+            Kota kini lebih hidup dengan bangunan, lampu jalan, dan vegetasi yang dihasilkan secara prosedural.
+        </p>
+    </div>
+
+    <!-- Modal Peta -->
+    <div id="map-modal">
+        <div style="position: absolute; top: 40px; text-align: center;">
+            <h1 class="text-3xl font-bold text-white mb-2">Pilih Destinasi Perjalanan</h1>
+            <p class="text-gray-400">Pilih node jaringan untuk memulai simulasi otonom.</p>
+        </div>
+        <div class="map-container" id="map-container">
+            <!-- Label Pulau -->
+            <div class="region-label" style="top: 50%; left: 15%;">SUMATRA</div>
+            <div class="region-label" style="top: 85%; left: 30%;">JAWA</div>
+            <div class="region-label" style="top: 40%; left: 40%;">KALIMANTAN</div>
+            <div class="region-label" style="top: 55%; left: 60%;">SULAWESI</div>
+            <div class="region-label" style="top: 70%; left: 85%;">PAPUA</div>
+
+            <!-- SVG untuk Garis Rute -->
+            <svg id="map-svg-lines">
+                <!-- Garis akan digambar menggunakan JS -->
+            </svg>
+        </div>
+    </div>
+
+    <!-- Layar Kedatangan -->
+    <div id="arrival-screen">
+        <div class="bg-slate-900 p-8 rounded-2xl border-2 border-green-500 text-center shadow-2xl">
+            <h1 class="text-5xl font-bold text-green-400 mb-2">Telah Tiba!</h1>
+            <p class="text-xl text-white mb-6">Mobil otonom berhasil mencapai <span id="arrive-dest" class="font-bold text-blue-400">Tujuan</span>.</p>
+            <button onclick="openMap()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full shadow-lg text-lg">
+                Pilih Tujuan Baru
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Canvas -->
+    <canvas id="simCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Parameter Visual
+        const ROAD_WIDTH = 360; 
+        const Z_PER_KM = 80;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Variabel Simulasi
+        let distanceTravelled = 0;
+        let globalSpeed = 0; 
+        let targetGlobalSpeed = 0; 
+
+        // Parameter Kamera
+        let camAngle = 0;
+        let camX = 0;
+
+        const CAR_WIDTH = 45;
+        const CAR_HEIGHT = 85;
+
+        let mainCar = {
+            x: 0, y: 0, angle: 0,
+            color: '#ef4444', // Warna mobil disesuaikan jadi merah
+            isTurning: false,
+            turnDir: 0, 
+            turnDistance: 0
+        };
+
+        let journey = {
+            active: false, name: "", totalDist: 0, totalDistZ: 0, currentDist: 0
+        };
+
+        let finishLine = { passed: false };
+        let trafficLights = [];
+        let sceneries = []; // Array untuk menyimpan properti lingkungan kota
+
+        // Referensi UI
+        const speedSlider = document.getElementById('speed-slider');
+        const speedVal = document.getElementById('speed-val');
+        const mapModal = document.getElementById('map-modal');
+        const journeyPanel = document.getElementById('journey-panel');
+        const arrivalScreen = document.getElementById('arrival-screen');
+        const distText = document.getElementById('dist-text');
+        const progressBar = document.getElementById('progress-bar');
+        const aiStatusIndicator = document.getElementById('ai-status-indicator');
+
+        // Data Kota (Disusun menyesuaikan titik Node)
+        const cities = [
+            { id: 'medan', name: 'Medan', left: 10, top: 30, dist: 1400 },
+            { id: 'palembang', name: 'Palembang', left: 22, top: 58, dist: 800 },
+            { id: 'jakarta', name: 'Jakarta', left: 28, top: 75, dist: 150 },
+            { id: 'surabaya', name: 'Surabaya', left: 42, top: 78, dist: 450 },
+            { id: 'denpasar', name: 'Denpasar', left: 49, top: 83, dist: 600 },
+            { id: 'pontianak', name: 'Pontianak', left: 35, top: 45, dist: 900 },
+            { id: 'banjarmasin', name: 'Banjarmasin', left: 45, top: 60, dist: 1100 },
+            { id: 'makassar', name: 'Makassar', left: 56, top: 70, dist: 1500 },
+            { id: 'manado', name: 'Manado', left: 62, top: 35, dist: 2200 },
+            { id: 'jayapura', name: 'Jayapura', left: 90, top: 55, dist: 3500 }
+        ];
+
+        // Rute Penghubung (Koneksi Garis)
+        const routes = [
+            ['medan', 'palembang'], ['palembang', 'jakarta'], ['jakarta', 'surabaya'],
+            ['surabaya', 'denpasar'], ['pontianak', 'banjarmasin'], ['banjarmasin', 'surabaya'],
+            ['surabaya', 'makassar'], ['makassar', 'manado'], ['makassar', 'jayapura']
+        ];
+
+        function initMap() {
+            const container = document.getElementById('map-container');
+            const svg = document.getElementById('map-svg-lines');
+            
+            // Gambar Garis Rute
+            routes.forEach(route => {
+                const c1 = cities.find(c => c.id === route[0]);
+                const c2 = cities.find(c => c.id === route[1]);
+                if(c1 && c2) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', c1.left + '%');
+                    line.setAttribute('y1', c1.top + '%');
+                    line.setAttribute('x2', c2.left + '%');
+                    line.setAttribute('y2', c2.top + '%');
+                    line.setAttribute('stroke', '#334155');
+                    line.setAttribute('stroke-width', '2');
+                    line.setAttribute('stroke-dasharray', '5,5');
+                    svg.appendChild(line);
+                }
+            });
+
+            // Buat Node Kota
+            cities.forEach(city => {
+                const pin = document.createElement('div');
+                pin.className = 'city-pin';
+                pin.style.left = city.left + '%';
+                pin.style.top = city.top + '%';
+                pin.onclick = () => startJourney(city);
+                pin.innerHTML = `
+                    <div class="pin-dot"></div>
+                    <div class="pin-label">${city.name}</div>
+                `;
+                container.appendChild(pin);
+            });
+        }
+        initMap();
+
+        function openMap() {
+            journey.active = false;
+            mapModal.style.display = 'flex';
+            arrivalScreen.style.display = 'none';
+            journeyPanel.style.display = 'none';
+        }
+
+        function getCurve(z) {
+            let maxCurve = (canvas.width - ROAD_WIDTH) / 2.2;
+            if (maxCurve < 50) maxCurve = 50; 
+            return Math.sin(z * 0.0015) * (maxCurve * 0.4) 
+                 + Math.sin(z * 0.0008) * (maxCurve * 0.5) 
+                 + Math.cos(z * 0.0030) * (maxCurve * 0.1);
+        }
+
+        function isInsideIntersection(z) {
+            for (let i = 0; i < trafficLights.length; i++) {
+                if (Math.abs(z - trafficLights[i].z) < ROAD_WIDTH / 2) return true;
+            }
+            return false;
+        }
+
+        // GENERATOR KOTA (BANGUNAN & LINGKUNGAN)
+        function generateScenery(totalDistZ) {
+            sceneries = [];
+            let currentZ = 500;
+            const colors = ['#1e293b', '#0f172a', '#334155', '#475569']; // Warna gedung gelap
+            const neonColors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b']; // Lampu jendela
+            
+            while(currentZ < totalDistZ) {
+                // Jangan buat bangunan di perempatan
+                if (!isInsideIntersection(currentZ)) {
+                    // Sisi Kiri
+                    if (Math.random() > 0.3) {
+                        sceneries.push({
+                            z: currentZ + (Math.random() * 50),
+                            side: -1,
+                            type: Math.random() > 0.8 ? 'tree' : 'building',
+                            width: 100 + Math.random() * 200,
+                            depth: 80 + Math.random() * 150,
+                            color: colors[Math.floor(Math.random() * colors.length)],
+                            neon: neonColors[Math.floor(Math.random() * neonColors.length)],
+                            offset: (ROAD_WIDTH / 2) + 50 + Math.random() * 150
+                        });
+                    }
+                    // Sisi Kanan
+                    if (Math.random() > 0.3) {
+                        sceneries.push({
+                            z: currentZ + (Math.random() * 50),
+                            side: 1,
+                            type: Math.random() > 0.8 ? 'tree' : 'building',
+                            width: 100 + Math.random() * 200,
+                            depth: 80 + Math.random() * 150,
+                            color: colors[Math.floor(Math.random() * colors.length)],
+                            neon: neonColors[Math.floor(Math.random() * neonColors.length)],
+                            offset: (ROAD_WIDTH / 2) + 50 + Math.random() * 150
+                        });
+                    }
+                }
+                currentZ += 200 + Math.random() * 300;
+            }
+        }
+
+        function startJourney(city) {
+            journey.active = true;
+            journey.name = city.name;
+            journey.totalDist = city.dist;
+            journey.currentDist = city.dist;
+            journey.totalDistZ = city.dist * Z_PER_KM;
+
+            distanceTravelled = 0;
+            finishLine.passed = false;
+            
+            camAngle = 0;
+            camX = 0;
+
+            mainCar.y = canvas.height - 180;
+            mainCar.x = canvas.width / 2 + getCurve(180);
+            mainCar.angle = 0;
+            mainCar.isTurning = false;
+            mainCar.turnDir = 0;
+            mainCar.turnDistance = 0;
+
+            targetGlobalSpeed = parseFloat(speedSlider.value) / 10;
+            globalSpeed = 0;
+
+            trafficLights = [];
+            let currentTL_Z = 2000;
+            while (currentTL_Z < journey.totalDistZ - 1000) {
+                trafficLights.push({
+                    z: currentTL_Z,
+                    state: Math.random() > 0.3 ? 'green' : 'red',
+                    timer: Math.random() * 200,
+                    side: Math.random() > 0.5 ? 1 : -1,
+                    turnDir: Math.random() < 0.5 ? (Math.random() > 0.5 ? 1 : -1) : 0 
+                });
+                currentTL_Z += 2000 + Math.random() * 2000;
+            }
+
+            generateScenery(journey.totalDistZ);
+
+            document.getElementById('dest-name').innerText = city.name;
+            updateJourneyUI();
+
+            mapModal.style.display = 'none';
+            arrivalScreen.style.display = 'none';
+            journeyPanel.style.display = 'block';
+        }
+
+        function updateJourneyUI() {
+            if(!journey.active) return;
+            let displayDist = Math.max(0, journey.currentDist);
+            distText.innerText = displayDist.toFixed(1) + " km";
+            let progress = ((journey.totalDist - displayDist) / journey.totalDist) * 100;
+            progressBar.style.width = progress + "%";
+        }
+
+        // --- SISTEM KECERDASAN BUATAN (AI) ---
+        function updateAI(brakeForLight, distToFinish, carZ) {
+            let userTargetSpeed = parseFloat(speedSlider.value) / 10;
+            let statusText = "AI: MENGEMUDI NORMAL";
+            let statusClass = "status-cruise";
+
+            if (distToFinish < 600) {
+                targetGlobalSpeed = Math.max(0.5, (distToFinish / 600) * userTargetSpeed);
+                statusText = "AI: PERSIAPAN BERHENTI";
+                statusClass = "status-brake";
+                if (distToFinish <= 0) targetGlobalSpeed = 0;
+            } 
+            else if (mainCar.isTurning) {
+                targetGlobalSpeed = userTargetSpeed * 0.65;
+                statusText = mainCar.turnDir === 1 ? "AI: BERBELOK KANAN" : "AI: BERBELOK KIRI";
+                statusClass = "status-turning";
+            }
+            else if (brakeForLight.active) {
+                let speedFactor = brakeForLight.distance / 500;
+                let brakingSpeed = userTargetSpeed * Math.max(0, speedFactor - 0.1);
+                targetGlobalSpeed = Math.min(targetGlobalSpeed, brakingSpeed);
+                statusText = "AI: MENGEREM (LAMPU MERAH)";
+                statusClass = "status-brake";
+            } 
+            else {
+                targetGlobalSpeed = userTargetSpeed;
+            }
+
+            if (aiStatusIndicator.innerText !== statusText) {
+                aiStatusIndicator.innerText = statusText;
+                aiStatusIndicator.className = `ai-status ${statusClass}`;
+            }
+
+            if (mainCar.isTurning) {
+                let targetAngle = (Math.PI / 2) * mainCar.turnDir;
+                mainCar.angle += (targetAngle - mainCar.angle) * 0.035;
+                camAngle += (-targetAngle - camAngle) * 0.035;
+            } 
+            else {
+                let targetCenterX = canvas.width / 2 + getCurve(carZ);
+                mainCar.x += (targetCenterX - mainCar.x) * 0.15;
+
+                let lookAheadZ = carZ + 120;
+                let lookAheadX = canvas.width / 2 + getCurve(lookAheadZ);
+                let dx = lookAheadX - mainCar.x;
+                let dy = 120; 
+
+                let targetAngle = Math.atan2(dx, dy); 
+                mainCar.angle += (targetAngle - mainCar.angle) * 0.1;
+            }
+        }
+
+        function updateTrafficLights(carZ) {
+            let brakeCmd = { active: false, distance: 0 };
+            trafficLights.forEach(tl => {
+                tl.timer++;
+                if (tl.state === 'green' && tl.timer > 400) { tl.state = 'yellow'; tl.timer = 0; }
+                else if (tl.state === 'yellow' && tl.timer > 100) { tl.state = 'red'; tl.timer = 0; }
+                else if (tl.state === 'red' && tl.timer > 300) { tl.state = 'green'; tl.timer = 0; }
+
+                let stopZ = tl.z - (ROAD_WIDTH/2 + CAR_HEIGHT/2 + 10);
+                let distToLight = stopZ - carZ;
+
+                if (distToLight > 0 && distToLight < 500 && tl.state !== 'green') {
+                    brakeCmd.active = true;
+                    brakeCmd.distance = distToLight;
+                }
+            });
+            return brakeCmd;
+        }
+
+        // --- SISTEM RENDERING / MENGGAMBAR ---
+        function drawEnvironment() {
+            // Latar Belakang Dasar
+            ctx.fillStyle = '#060b12';
+            ctx.fillRect(-canvas.width*2, -canvas.height*2, canvas.width*5, canvas.height*5);
+            const renderStep = 15; 
+
+            // 1. Gambar Scenery (Bangunan / Pohon)
+            sceneries.forEach(sc => {
+                let y = canvas.height - (sc.z - distanceTravelled);
+                // Hanya gambar yang ada di dalam pandangan kamera (culling)
+                if (y < -1500 || y > canvas.height + 1500) return;
+
+                let cx = canvas.width/2 + getCurve(sc.z);
+                let dx = getCurve(sc.z + 10) - getCurve(sc.z - 10);
+                let angle = Math.atan2(dx, 20);
+
+                ctx.save();
+                ctx.translate(cx, y);
+                ctx.rotate(angle);
+                
+                let objX = sc.side * sc.offset;
+                
+                if (sc.type === 'building') {
+                    // Gambar Gedung
+                    ctx.fillStyle = sc.color;
+                    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                    ctx.shadowBlur = 15;
+                    ctx.fillRect(objX - (sc.width/2), -sc.depth/2, sc.width, sc.depth);
+                    
+                    // Detail Atap / Neon Gedung
+                    ctx.shadowBlur = 0;
+                    ctx.strokeStyle = sc.neon;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(objX - (sc.width/2) + 5, -sc.depth/2 + 5, sc.width - 10, sc.depth - 10);
+                } else {
+                    // Gambar Pohon Sederhana
+                    ctx.fillStyle = '#064e3b';
+                    ctx.beginPath();
+                    ctx.arc(objX, 0, sc.width/4, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillStyle = '#047857';
+                    ctx.beginPath();
+                    ctx.arc(objX + 10, 10, sc.width/5, 0, Math.PI*2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // 2. Aspal Jalan Utama
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            for(let y = -canvas.height; y <= canvas.height + renderStep; y += renderStep) {
+                let z = distanceTravelled + (canvas.height - y);
+                let cx = canvas.width/2 + getCurve(z);
+                if(y === -canvas.height) ctx.moveTo(cx - ROAD_WIDTH/2, y);
+                else ctx.lineTo(cx - ROAD_WIDTH/2, y);
+            }
+            for(let y = canvas.height + renderStep; y >= -canvas.height; y -= renderStep) {
+                let z = distanceTravelled + (canvas.height - y);
+                let cx = canvas.width/2 + getCurve(z);
+                ctx.lineTo(cx + ROAD_WIDTH/2, y);
+            }
+            ctx.fill();
+
+            // 3. Persimpangan
+            trafficLights.forEach(tl => {
+                let y = canvas.height - (tl.z - distanceTravelled);
+                if (y < -1500 || y > canvas.height + 1500) return;
+
+                let cx = canvas.width/2 + getCurve(tl.z);
+                let dx = getCurve(tl.z + 10) - getCurve(tl.z - 10);
+                let angle = Math.atan2(dx, 20);
+
+                ctx.save();
+                ctx.translate(cx, y);
+                ctx.rotate(angle);
+
+                let hw = canvas.width * 3; 
+
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(-hw, -ROAD_WIDTH/2, hw*2, ROAD_WIDTH);
+
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(-hw, -ROAD_WIDTH/2); ctx.lineTo(-ROAD_WIDTH/2, -ROAD_WIDTH/2);
+                ctx.moveTo(ROAD_WIDTH/2, -ROAD_WIDTH/2); ctx.lineTo(hw, -ROAD_WIDTH/2);
+                ctx.moveTo(-hw, ROAD_WIDTH/2); ctx.lineTo(-ROAD_WIDTH/2, ROAD_WIDTH/2);
+                ctx.moveTo(ROAD_WIDTH/2, ROAD_WIDTH/2); ctx.lineTo(hw, ROAD_WIDTH/2);
+                ctx.stroke();
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 4;
+                ctx.setLineDash([30, 40]);
+                ctx.beginPath();
+                ctx.moveTo(-hw, 0); ctx.lineTo(-ROAD_WIDTH/2, 0);
+                ctx.moveTo(ROAD_WIDTH/2, 0); ctx.lineTo(hw, 0);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.restore();
+            });
+
+            // 4. Garis Pinggir Jalan Utama
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            let drawingLeft = false;
+            for(let y = -canvas.height; y <= canvas.height + renderStep; y += renderStep) {
+                let z = distanceTravelled + (canvas.height - y);
+                let cx = canvas.width/2 + getCurve(z);
+                if (!isInsideIntersection(z)) {
+                    if (!drawingLeft) { ctx.moveTo(cx - ROAD_WIDTH/2, y); drawingLeft = true; }
+                    else { ctx.lineTo(cx - ROAD_WIDTH/2, y); }
+                } else { drawingLeft = false; }
+            }
+            ctx.stroke();
+
+            ctx.beginPath();
+            let drawingRight = false;
+            for(let y = -canvas.height; y <= canvas.height + renderStep; y += renderStep) {
+                let z = distanceTravelled + (canvas.height - y);
+                let cx = canvas.width/2 + getCurve(z);
+                if (!isInsideIntersection(z)) {
+                    if (!drawingRight) { ctx.moveTo(cx + ROAD_WIDTH/2, y); drawingRight = true; }
+                    else { ctx.lineTo(cx + ROAD_WIDTH/2, y); }
+                } else { drawingRight = false; }
+            }
+            ctx.stroke();
+
+            // 5. Pembatas Lajur Utama Vertikal
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([30, 40]);
+            ctx.lineDashOffset = -distanceTravelled;
+            let laneWidth = ROAD_WIDTH / 3;
+            for(let i = 1; i <= 2; i++) {
+                ctx.beginPath();
+                let drawingLane = false;
+                for(let y = -canvas.height; y <= canvas.height + renderStep; y += renderStep) {
+                    let z = distanceTravelled + (canvas.height - y);
+                    let cx = canvas.width/2 + getCurve(z);
+                    let lineX = cx - ROAD_WIDTH/2 + (i * laneWidth);
+                    if (!isInsideIntersection(z)) {
+                        if (!drawingLane) { ctx.moveTo(lineX, y); drawingLane = true; }
+                        else { ctx.lineTo(lineX, y); }
+                    } else { drawingLane = false; }
+                }
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+        }
+
+        function drawTrafficLights() {
+            trafficLights.forEach(tl => {
+                let y = canvas.height - (tl.z - distanceTravelled);
+                if (y < -1500 || y > canvas.height + 1500) return;
+
+                let cx = canvas.width/2 + getCurve(tl.z);
+                let dx = getCurve(tl.z + 10) - getCurve(tl.z - 10);
+                let angle = Math.atan2(dx, 20);
+
+                ctx.save();
+                ctx.translate(cx, y);
+                ctx.rotate(angle); 
+
+                // Marka Zebra Cross
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                for (let i = -170; i < 180; i += 30) { ctx.fillRect(i, 140, 20, 30); }
+                for (let i = -170; i < 180; i += 30) { ctx.fillRect(i, -170, 20, 30); }
+                for (let i = -170; i < 180; i += 30) { ctx.fillRect(-170, i, 30, 20); }
+                for (let i = -170; i < 180; i += 30) { ctx.fillRect(140, i, 30, 20); }
+
+                // Stop Line
+                if (tl.state === 'red' || tl.state === 'yellow') {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.fillRect(-ROAD_WIDTH/2, ROAD_WIDTH/2 + 5, ROAD_WIDTH, 12);
+                }
+
+                // Tiang Lampu Lalu Lintas
+                let cornerX = (ROAD_WIDTH/2 + 30) * tl.side;
+                let cornerY = ROAD_WIDTH/2 + 30; 
+                ctx.translate(cornerX, cornerY);
+
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(-8, -40, 16, 80);
+                ctx.fillStyle = '#000';
+                ctx.roundRect(-15, -45, 30, 90, 4);
+                ctx.fill();
+
+                let colors = tl.state === 'red' ? ['#ef4444', '#3f1111', '#3f1111'] :
+                             tl.state === 'yellow' ? ['#3f3111', '#eab308', '#3f3111'] :
+                             ['#113f11', '#113f11', '#22c55e'];
+
+                // Beri efek glow pada lampu yang menyala
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = tl.state === 'red' ? '#ef4444' : tl.state === 'yellow' ? '#eab308' : '#22c55e';
+                
+                ctx.fillStyle = colors[0]; ctx.beginPath(); ctx.arc(0, -25, 8, 0, Math.PI*2); ctx.fill();
+                ctx.shadowBlur = tl.state === 'yellow' ? 10 : 0;
+                ctx.fillStyle = colors[1]; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill();
+                ctx.shadowBlur = tl.state === 'green' ? 10 : 0;
+                ctx.fillStyle = colors[2]; ctx.beginPath(); ctx.arc(0, 25, 8, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        function drawFinishLine() {
+            let y = canvas.height - (journey.totalDistZ - distanceTravelled);
+            if (y < -500 || y > canvas.height + 500) return;
+
+            let cx = canvas.width/2 + getCurve(journey.totalDistZ);
+            let lookX = canvas.width/2 + getCurve(journey.totalDistZ + 50);
+            let angle = Math.atan2(lookX - cx, 50);
+
+            ctx.save();
+            ctx.translate(cx, y);
+            ctx.rotate(angle);
+
+            const sq = 24;
+            const cols = ROAD_WIDTH / sq;
+            const rows = 4;
+            ctx.translate(-ROAD_WIDTH/2, -rows * sq / 2);
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#000000';
+                    ctx.fillRect(c * sq, r * sq, sq, sq);
+                }
+            }
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(cx, y - 80);
+            ctx.fillStyle = '#3b82f6'; 
+            ctx.font = 'bold 42px Inter';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 10;
+            ctx.fillText(journey.name.toUpperCase(), 0, 0);
+            ctx.restore();
+        }
+
+        function drawCar() {
+            ctx.save();
+            ctx.translate(mainCar.x, mainCar.y);
+            ctx.rotate(mainCar.angle);
+
+            // Bayangan
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.beginPath();
+            ctx.roundRect(-CAR_WIDTH/2 + 5, -CAR_HEIGHT/2 + 10, CAR_WIDTH, CAR_HEIGHT, 8);
+            ctx.fill();
+
+            // Bodi
+            ctx.fillStyle = mainCar.color;
+            ctx.beginPath();
+            ctx.roundRect(-CAR_WIDTH/2, -CAR_HEIGHT/2, CAR_WIDTH, CAR_HEIGHT, 8);
+            ctx.fill();
+
+            // Kaca
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.roundRect(-CAR_WIDTH/2 + 5, -CAR_HEIGHT/2 + 20, CAR_WIDTH - 10, CAR_HEIGHT - 45, 4);
+            ctx.fill();
+
+            // Lampu Belakang (Merah menyala jika rem)
+            let isBraking = aiStatusIndicator.classList.contains('status-brake');
+            ctx.fillStyle = isBraking ? '#ef4444' : '#7f1d1d';
+            ctx.shadowColor = isBraking ? '#ef4444' : 'transparent';
+            ctx.shadowBlur = isBraking ? 10 : 0;
+            ctx.fillRect(-CAR_WIDTH/2 + 5, CAR_HEIGHT/2 - 5, 10, 5);
+            ctx.fillRect(CAR_WIDTH/2 - 15, CAR_HEIGHT/2 - 5, 10, 5);
+
+            // Lampu Depan & Sorotan
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.beginPath(); ctx.arc(-CAR_WIDTH/2 + 8, -CAR_HEIGHT/2 + 5, 4, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(CAR_WIDTH/2 - 8, -CAR_HEIGHT/2 + 5, 4, 0, Math.PI*2); ctx.fill();
+
+            const grad = ctx.createLinearGradient(0, -CAR_HEIGHT/2, 0, -CAR_HEIGHT/2 - 250);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(-CAR_WIDTH/2, -CAR_HEIGHT/2);
+            ctx.lineTo(-CAR_WIDTH*2, -CAR_HEIGHT/2 - 250);
+            ctx.lineTo(CAR_WIDTH*2, -CAR_HEIGHT/2 - 250);
+            ctx.lineTo(CAR_WIDTH/2, -CAR_HEIGHT/2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // --- MAIN LOOP ---
+        function update() {
+            if (!journey.active) return;
+
+            let carZ = distanceTravelled + (canvas.height - mainCar.y);
+            let brakeForLight = updateTrafficLights(carZ);
+            let distToFinish = journey.totalDistZ - distanceTravelled;
+
+            globalSpeed += (targetGlobalSpeed - globalSpeed) * 0.05;
+
+            if (!mainCar.isTurning) {
+                let activeTL = trafficLights.find(tl => (tl.z - carZ) < 80 && (tl.z - carZ) > -20 && tl.turnDir !== 0);
+                if (activeTL) {
+                    mainCar.isTurning = true;
+                    mainCar.turnDir = activeTL.turnDir;
+                    mainCar.turnDistance = 0;
+                    activeTL.turnDir = 0; 
+                }
+            }
+
+            updateAI(brakeForLight, distToFinish, carZ);
+
+            if (globalSpeed > 0.01 && !finishLine.passed) {
+                if (mainCar.isTurning) {
+                    let speedZ = Math.cos(mainCar.angle) * globalSpeed;
+                    let speedX = Math.sin(mainCar.angle) * globalSpeed;
+                    
+                    distanceTravelled += speedZ; 
+                    mainCar.x += speedX;
+                    mainCar.turnDistance += Math.abs(speedX); 
+
+                    let targetCamX = mainCar.x - canvas.width / 2;
+                    camX += (targetCamX - camX) * 0.1;
+
+                    if (mainCar.turnDistance > canvas.height * 1.2) { 
+                        mainCar.isTurning = false;
+                        mainCar.angle = 0;
+                        camAngle = 0;
+                        
+                        distanceTravelled += mainCar.turnDistance;
+                        let targetX = canvas.width / 2 + getCurve(distanceTravelled + (canvas.height - mainCar.y));
+                        
+                        camX = targetX - (canvas.width / 2);
+                        mainCar.x = targetX;
+                        mainCar.turnDistance = 0;
+                    }
+                } else {
+                    distanceTravelled += globalSpeed;
+                    camX += (0 - camX) * 0.05;
+                }
+
+                journey.currentDist = Math.max(0, (journey.totalDistZ - distanceTravelled) / Z_PER_KM);
+                updateJourneyUI();
+            }
+
+            if (distToFinish <= 0 && globalSpeed < 0.1 && !finishLine.passed) {
+                finishLine.passed = true;
+                setTimeout(() => {
+                    document.getElementById('arrive-dest').innerText = journey.name;
+                    arrivalScreen.style.display = 'flex';
+                    journeyPanel.style.display = 'none';
+                }, 1000);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.save();
+            let pivotX = mainCar.x - camX;
+            let pivotY = mainCar.y;
+            
+            ctx.translate(pivotX, pivotY);
+            ctx.rotate(camAngle);
+            ctx.translate(-pivotX, -pivotY);
+            ctx.translate(-camX, 0);
+
+            drawEnvironment();
+            drawTrafficLights();
+            drawFinishLine();
+            drawCar();
+
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        speedSlider.addEventListener('input', (e) => {
+            speedVal.innerText = e.target.value + " km/h";
+        });
+
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
